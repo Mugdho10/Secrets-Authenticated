@@ -1,8 +1,19 @@
 import express from "express";
 import bodyParser from "body-parser";
+import pg from "pg";
+
 
 const app = express();
 const port = 3000;
+
+const db = new pg.Client({
+  user: "postgres",
+  host: "localhost",
+  database: "secrets",
+  password: "123456",
+  port: 5432
+});
+db.connect();
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
@@ -18,6 +29,31 @@ app.get("/login", (req, res) => {
 app.get("/register", (req, res) => {
   res.render("register.ejs");
 });
+
+app.post("/login", (req, res) => {
+  const email = req.body.username;
+  const password = req.body.password;
+});
+
+app.post("/register", async (req, res) => {
+  const email = req.body.username;
+  const password = req.body.password;
+
+  try {
+    const checkResult = await db.query("SELECT * FROM users WHERE email = $1,"[email]);
+
+    if (checkResult.rows.length > 0) {
+      res.send("Email already exists, try logging in.");
+    } else {
+      const result = await db.query("INSERT INTO users (email, password) VALUES ($1, $2)", [email, password]);
+      console.log(result);
+      res.render("secrets.ejs");
+    }
+  } catch (error) {
+    console.error("Error during registration:", error);
+  }
+});
+
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
