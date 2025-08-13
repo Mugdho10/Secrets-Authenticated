@@ -2,6 +2,10 @@ import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
 import bcrypt from "bcrypt";
+import session from "express-session";
+import Passport from "passport";
+import { Strategy } from "passport-local";
+import passport from "passport";
 
 const app = express();
 const port = 3000;
@@ -19,6 +23,16 @@ db.connect();
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
+app.use(session({
+  secret: "TOPSECRET",
+  resave: false,
+  saveUninitialized: true,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
+}));
+
+app.use(Passport.initialize());
+app.use(Passport.session());
+
 app.get("/", (req, res) => {
   res.render("home.ejs");
 });
@@ -29,6 +43,14 @@ app.get("/login", (req, res) => {
 
 app.get("/register", (req, res) => {
   res.render("register.ejs");
+});
+
+app.get("/secrets", (req, res) => {
+  if (req.isAuthenticated()) {
+    res.render("secrets.ejs");
+  } else {
+    res.redirect("/login");
+  }
 });
 
 app.post("/register", async (req, res) => {
@@ -46,9 +68,16 @@ app.post("/register", async (req, res) => {
         if (err) {
           console.error("Error hashing password:", err);
         } else {
-          const result = await db.query("INSERT INTO users (email, password) VALUES ($1, $2)", [email, hash]);
-          console.log(result);
-          res.render("secrets.ejs");
+          const result = await db.query("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *", [email, hash]);
+          const user = result.rows[0];
+          req.login(user, (err) => {
+            if (err) {
+              console.error("Error during login after registration:", err);
+              res.redirect("/register");
+            } else {
+              res.redirect("/secrets");
+            }
+          });
         }
       });
     }
@@ -57,33 +86,44 @@ app.post("/register", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
-  const email = req.body.username;
-  const loginPassword = req.body.password;
+app.post("/login", passport.authenticate("local", {
+    successRedirect: "/secrets",
+    failureRedirect: "/login",
+  })
+);
 
+passport.use(new Strategy(async function (username, password, cb) {
   try {
-    const result = await db.query("SELECT * FROM users WHERE email = $1", [email,]);
+    const result = await db.query("SELECT * FROM users WHERE email = $1", [username,]);
     if (result.rows.length > 0) {
       const user = result.rows[0];
       const storedHashedPassword = user.password;
 
-      bcrypt.compare(loginPassword, storedHashedPassword, (err, result) => {
+      bcrypt.compare(password, storedHashedPassword, (err, result) => {
         if (err) {
-          console.error("Error comparing passwords:", err);
+          return cb(err);
         } else {
           if (result) {
-            res.render("secrets.ejs");
+            return cb(null, user);
           } else {
-            res.send("Incorrect password, please try again.");
+            return cb(null, user);
           }
         }
       });
     } else {
-      res.send("No user found with that email, please register.");
+      return cb("No user found with that email, please register.");
     }
-  } catch (error) {
-    console.error("Error during login:", error);
+  } catch (err) {
+    return cbn("Error during login:", err);
   }
+}));
+
+passport.serializeUser((user, cb) => {
+  cb(null, user);
+});
+
+passport.deserializeUser((user, cb) => {
+  cb(null, user);
 });
 
 app.listen(port, () => {
