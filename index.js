@@ -6,10 +6,12 @@ import session from "express-session";
 import Passport from "passport";
 import { Strategy } from "passport-local";
 import passport from "passport";
+import env from "dotenv";
 
 const app = express();
 const port = 3000;
 const saltRounds = 10;
+env.config();
 
 const db = new pg.Client({
   user: "postgres",
@@ -24,7 +26,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
 app.use(session({
-  secret: "TOPSECRET",
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: true,
   cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
