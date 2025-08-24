@@ -2,10 +2,10 @@ import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
 import bcrypt from "bcrypt";
-import session from "express-session";
 import passport from "passport";
 import { Strategy } from "passport-local";
 import GoogleStrategy from "passport-google-oauth2";
+import session from "express-session";
 import env from "dotenv";
 
 const app = express();
@@ -18,7 +18,6 @@ app.use(
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
-    cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
   })
 );
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -59,15 +58,20 @@ app.get("/logout", (req, res) => {
 
 app.get("/secrets", async (req, res) => {
   console.log(req.user);
-    if (req.isAuthenticated()) {
+
+  ////////////////UPDATED GET SECRETS ROUTE/////////////////
+  if (req.isAuthenticated()) {
     try {
-      const result = await db.query("SELECT secret FROM users WHERE email = $1", [req.user.email]);
+      const result = await db.query(
+        `SELECT secret FROM users WHERE email = $1`,
+        [req.user.email]
+      );
       console.log(result);
       const secret = result.rows[0].secret;
       if (secret) {
         res.render("secrets.ejs", { secret: secret });
       } else {
-        res.render("secrets.ejs", { secret: "Please, submit a secret!" });
+        res.render("secrets.ejs", { secret: "Jack Bauer is my hero." });
       }
     } catch (err) {
       console.log(err);
@@ -77,7 +81,8 @@ app.get("/secrets", async (req, res) => {
   }
 });
 
-app.get("/submit", (req, res) => {
+////////////////SUBMIT GET ROUTE/////////////////
+app.get("/submit", function (req, res) {
   if (req.isAuthenticated()) {
     res.render("submit.ejs");
   } else {
@@ -113,18 +118,21 @@ app.post("/register", async (req, res) => {
   const password = req.body.password;
 
   try {
-    const checkResult = await db.query("SELECT * FROM users WHERE email = $1", [email,]);
+    const checkResult = await db.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
 
     if (checkResult.rows.length > 0) {
       req.redirect("/login");
     } else {
-      //Password Hashing
       bcrypt.hash(password, saltRounds, async (err, hash) => {
         if (err) {
           console.error("Error hashing password:", err);
         } else {
           const result = await db.query(
-            "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *", [email, hash]);
+            "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
+            [email, hash]
+          );
           const user = result.rows[0];
           req.login(user, (err) => {
             console.log("success");
@@ -138,11 +146,16 @@ app.post("/register", async (req, res) => {
   }
 });
 
-app.post("/submit", async (req, res) => {
+
+////////////////SUBMIT POST ROUTE/////////////////
+app.post("/submit", async function (req, res) {
   const submittedSecret = req.body.secret;
   console.log(req.user);
   try {
-    await db.query("UPDATE users SET secret = $1 WHERE email = $2", [submittedSecret, req.user.email,]);
+    await db.query(`UPDATE users SET secret = $1 WHERE email = $2`, [
+      submittedSecret,
+      req.user.email,
+    ]);
     res.redirect("/secrets");
   } catch (err) {
     console.log(err);
@@ -153,11 +166,12 @@ passport.use(
   "local",
   new Strategy(async function verify(username, password, cb) {
     try {
-      const result = await db.query("SELECT * FROM users WHERE email = $1", [username,]);
+      const result = await db.query("SELECT * FROM users WHERE email = $1 ", [
+        username,
+      ]);
       if (result.rows.length > 0) {
         const user = result.rows[0];
         const storedHashedPassword = user.password;
-
         bcrypt.compare(password, storedHashedPassword, (err, valid) => {
           if (err) {
             console.error("Error comparing passwords:", err);
@@ -171,7 +185,7 @@ passport.use(
           }
         });
       } else {
-        return cb("No user found with that email, please register.");
+        return cb("User not found");
       }
     } catch (err) {
       console.log(err);
@@ -190,10 +204,14 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, cb) => {
       try {
-        console.log(profile);
-        const result = await db.query("SELECT * FROM users WHERE email = $1", [profile.email,]);
+        const result = await db.query("SELECT * FROM users WHERE email = $1", [
+          profile.email,
+        ]);
         if (result.rows.length === 0) {
-          const newUser = await db.query("INSERT INTO users (email, password) VALUES ($1, $2)", [profile.email, "google"]);
+          const newUser = await db.query(
+            "INSERT INTO users (email, password) VALUES ($1, $2)",
+            [profile.email, "google"]
+          );
           return cb(null, newUser.rows[0]);
         } else {
           return cb(null, result.rows[0]);
